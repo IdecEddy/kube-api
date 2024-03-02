@@ -1,0 +1,13 @@
+bin
+lib
+src/__pycache__
+pyvenv.cfg
+src/logs
+__pycache__
+include
+src/*.db
+cert.pem
+key.pem
+private.key
+public.key
+.env
