@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, Text
-from base import Base
+from models.base import Base
 
 class KubeConfig(Base):
     __tablename__ = 'kubeconfigs'
