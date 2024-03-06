@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
 from models.base import Base
-from models.kubeconfig import KubeConfig
+from models.kubeconf_db import KubeConfig
 
 db_path = Path("kube.db").absolute()
 engine = create_engine(rf"sqlite:///{db_path}")
