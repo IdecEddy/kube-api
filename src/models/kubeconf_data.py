@@ -10,6 +10,9 @@ class GetUsersKubeConfigsResponse(BaseModel):
     id: int
     user_id: int
     config_data: str
+    kube_user: str
+    kube_server: str
+    
 
     class Config:
         orm_mode = True
