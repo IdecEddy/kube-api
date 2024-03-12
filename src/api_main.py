@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from routers.kube import router as kube
 from fastapi.middleware.cors import CORSMiddleware
 
+
 def create_app() -> FastAPI:
     app = FastAPI()
     # Define a list of allowed origins for CORS

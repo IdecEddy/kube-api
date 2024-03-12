@@ -3,7 +3,11 @@ from typing import List
 from loggingconf import setup_logging
 from sqlalchemy.orm import Session
 from utils.db import get_db
-from models.kubeconf_data import CreateKubeConfigRequest, GetUsersKubeConfigsResponse, GetUsersKubeConfigsRequest
+from models.kubeconf_data import (
+    CreateKubeConfigRequest,
+    GetUsersKubeConfigsResponse,
+    GetUsersKubeConfigsRequest,
+)
 from models.kubeconf_db import KubeConfig
 from utils.auth import validate_token
 import yaml
@@ -16,21 +20,27 @@ logger = setup_logging()
 def test_auth():
     return "Welcome to the k8 api"
 
+
 @router.post("/conf/create")
-def create_conf(kubeconfRequest: CreateKubeConfigRequest, db: Session = Depends(get_db), auth_token: str = Depends(validate_token)):
+def create_conf(
+    kubeconfRequest: CreateKubeConfigRequest,
+    db: Session = Depends(get_db),
+    auth_token: str = Depends(validate_token),
+):
     logger.info(f"Creating kubeconfig for user {kubeconfRequest.userId}")
-    
+
     yamlData = yaml.safe_load(kubeconfRequest.kubeConfFile)
 
-    clusterName = yamlData['clusters'][0]['name']
-    clusterUser = yamlData['users'][0]['name']
+    clusterName = yamlData["clusters"][0]["name"]
+    clusterUser = yamlData["users"][0]["name"]
 
     new_config = KubeConfig(
         user_id=kubeconfRequest.userId,
         config_data=kubeconfRequest.kubeConfFile,
-        kube_user=clusterUser,
-        kube_server=clusterName,
-        conf_label="this is a name"
+        config_user=clusterUser,
+        config_server=clusterName,
+        config_label=kubeconfRequest.clusterLabel,
+        config_description=kubeconfRequest.clusterDescription,
     )
 
     # Add the new record to the session and commit it
@@ -46,12 +56,23 @@ def create_conf(kubeconfRequest: CreateKubeConfigRequest, db: Session = Depends(
     # Return the ID of the newly created record and a success message
     return {"id": new_config.id, "message": "KubeConfig created successfully."}
 
+
 @router.post("/conf/users_confs", response_model=List[GetUsersKubeConfigsResponse])
-def get_conf(getUsersKubeConfigsRequest: GetUsersKubeConfigsRequest, db: Session = Depends(get_db), auth_token: str = Depends(validate_token)):
+def get_conf(
+    getUsersKubeConfigsRequest: GetUsersKubeConfigsRequest,
+    db: Session = Depends(get_db),
+    auth_token: str = Depends(validate_token),
+):
     # Query the database for kubeconfig(s) associated with the user ID
-    configs = db.query(KubeConfig).filter(KubeConfig.user_id == getUsersKubeConfigsRequest.userId).all()
+    configs = (
+        db.query(KubeConfig)
+        .filter(KubeConfig.user_id == getUsersKubeConfigsRequest.userId)
+        .all()
+    )
 
     if not configs:
-        raise HTTPException(status_code=404, detail="KubeConfig not found for the specified user ID")
+        raise HTTPException(
+            status_code=404, detail="KubeConfig not found for the specified user ID"
+        )
 
     return configs
