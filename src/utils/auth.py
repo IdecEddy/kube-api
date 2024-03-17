@@ -9,7 +9,7 @@ IS_PRODUCTION = True  # Set based on your environment
 # Assuming the use of OAuth2 with Bearer tokens, but adjust according to your needs
 
 
-async def validate_token(request: Request) -> str:
+async def validate_token(request: Request) -> httpx.Response:
     body = await request.json()
     authToken = body.get("authToken")
     if not authToken:
@@ -27,7 +27,7 @@ async def validate_token(request: Request) -> str:
                     detail="Invalid authentication credentials",
                 )
             print(response.json().get("message"))
-            return authToken
+            return response
         except httpx.HTTPStatusError as exc:
             print(f"HTTP error occurred: {exc}")
         except httpx.RequestError as exc:

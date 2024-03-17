@@ -11,7 +11,7 @@ from models.kubeconf_data import (
 from models.kubeconf_db import KubeConfig
 from utils.auth import validate_token
 import yaml
-
+import httpx
 router = APIRouter(prefix="/api/v1/k8")
 logger = setup_logging()
 
@@ -25,9 +25,10 @@ def test_auth():
 def create_conf(
     kubeconfRequest: CreateKubeConfigRequest,
     db: Session = Depends(get_db),
-    auth_token: str = Depends(validate_token),
+    auth_token: httpx.Response = Depends(validate_token),
 ):
-    logger.info(f"Creating kubeconfig for user {kubeconfRequest.userId}")
+    userId = auth_token.json()['payload']['user_id']
+    logger.info(f"Creating kubeconfig for user {userId}")
 
     yamlData = yaml.safe_load(kubeconfRequest.kubeConfFile)
 
@@ -35,7 +36,7 @@ def create_conf(
     clusterUser = yamlData["users"][0]["name"]
 
     new_config = KubeConfig(
-        user_id=kubeconfRequest.userId,
+        user_id=userId,
         config_data=kubeconfRequest.kubeConfFile,
         config_user=clusterUser,
         config_server=clusterName,
@@ -51,7 +52,7 @@ def create_conf(
     db.refresh(new_config)
 
     # Log the successful creation
-    logger.info(f"Created kubeconfig {new_config.id} for user {kubeconfRequest.userId}")
+    logger.info(f"Created kubeconfig {new_config.id} for user {userId}")
 
     # Return the ID of the newly created record and a success message
     return {"id": new_config.id, "message": "KubeConfig created successfully."}
