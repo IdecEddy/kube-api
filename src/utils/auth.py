@@ -26,7 +26,6 @@ async def validate_token(request: Request) -> httpx.Response:
                     status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid authentication credentials",
                 )
-            print(response.json().get("message"))
             return response
         except httpx.HTTPStatusError as exc:
             print(f"HTTP error occurred: {exc}")

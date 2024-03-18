@@ -24,3 +24,8 @@ class GetUsersKubeConfigsResponse(BaseModel):
 class GetUsersKubeConfigsRequest(BaseModel):
     userId: int = Field(..., description="The unique identifier for the user")
     authToken: str = Field(..., description="the authentication token for the user")
+
+class deleteUsersKubeConfigsRequest(BaseModel):
+    authToken: str = Field(..., description="The auth token to provide to the auth API")
+    databaseId: int = Field(..., description="The database id that we want to delete")
+

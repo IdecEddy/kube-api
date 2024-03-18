@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Response, HTTPException, status
 from typing import List
+
+from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from loggingconf import setup_logging
 from sqlalchemy.orm import Session
 from utils.db import get_db
@@ -7,6 +9,7 @@ from models.kubeconf_data import (
     CreateKubeConfigRequest,
     GetUsersKubeConfigsResponse,
     GetUsersKubeConfigsRequest,
+    deleteUsersKubeConfigsRequest,
 )
 from models.kubeconf_db import KubeConfig
 from utils.auth import validate_token
@@ -77,3 +80,36 @@ def get_conf(
         )
 
     return configs
+
+@router.post("/conf/deleteById")
+def delete_conf_by_id(
+    deleteUsersKubeConfigsRequest: deleteUsersKubeConfigsRequest,
+    db: Session = Depends(get_db),
+    auth_token: httpx.Response = Depends(validate_token),
+):
+    authToken = auth_token.json()['payload']['user_id']
+    try: 
+        conf = (
+            db.query(KubeConfig)
+            .filter(KubeConfig.id == deleteUsersKubeConfigsRequest.databaseId)
+            .one()
+        )
+    except NoResultFound:
+        raise HTTPException(
+            status_code=404, detail="could not find record."
+        )
+    except MultipleResultsFound:
+        raise HTTPException(
+            status_code=500, detail="The database has more then one record with the same id this is BAD."
+        )
+
+    if conf.user_id is authToken:
+        try:
+            db.delete(conf)
+            db.commit()
+            return {"status": 200, "message": "We removed the record"}
+        except Exception as e:
+            raise HTTPException(
+                status_code=404, detail="could not find record."
+            )
+
