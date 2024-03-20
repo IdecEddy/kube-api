@@ -9,6 +9,9 @@ class KubeConfig(Base):
     config_data = Column(
         Text, nullable=False
     )  # Stores the entire kubeconfig file content
+    ca_file = Column(Text, nullable=False)
+    key_file = Column(Text, nullable=False)
+    cert_file = Column(Text, nullable=False)
     config_user = Column(Text, nullable=False)
     config_server = Column(Text, nullable=False)
     config_label = Column(Text, nullable=False)

@@ -15,6 +15,9 @@ from models.kubeconf_db import KubeConfig
 from utils.auth import validate_token
 import yaml
 import httpx
+from ssl import SSLContext, PROTOCOL_TLS_CLIENT
+import tempfile
+import os
 router = APIRouter(prefix="/api/v1/k8")
 logger = setup_logging()
 
@@ -45,6 +48,9 @@ def create_conf(
         config_server=clusterName,
         config_label=kubeconfRequest.clusterLabel,
         config_description=kubeconfRequest.clusterDescription,
+        ca_file=kubeconfRequest.caFile,
+        key_file=kubeconfRequest.keyFile,
+        cert_file=kubeconfRequest.certFile,
     )
 
     # Add the new record to the session and commit it
@@ -112,4 +118,35 @@ def delete_conf_by_id(
             raise HTTPException(
                 status_code=404, detail="could not find record."
             )
+
+
+@router.get("/cluster-info")
+def get_cluster_info(db: Session = Depends(get_db)):
+    conf = db.query(KubeConfig).filter(KubeConfig.id == 1).first()
+
+    if conf: 
+        ca_cert = str(conf.ca_file)
+        key_file = str(conf.key_file)
+        cert_file = str(conf.cert_file)
+
+        with tempfile.NamedTemporaryFile() as cert_temp, \
+            tempfile.NamedTemporaryFile() as key_temp, \
+            tempfile.NamedTemporaryFile() as ca_temp:
+
+
+            cert_temp.write(cert_file.encode())
+            key_temp.write(key_file.encode())
+            ca_temp.write(ca_cert.encode())
+            cert_temp.flush()
+            key_temp.flush()
+            ca_temp.flush()
+            ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
+            ssl_context.load_cert_chain(certfile=cert_temp.name, keyfile=key_temp.name)
+            ssl_context.load_verify_locations(cafile=ca_temp.name)
+
+            with httpx.Client(verify=ssl_context) as client:
+                response = client.get("https://192.168.50.84:8443/api/v1/nodes")
+                return response.json()
+
+
 

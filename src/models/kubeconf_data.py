@@ -6,6 +6,9 @@ class CreateKubeConfigRequest(BaseModel):
     kubeConfFile: str = Field(..., description="The content of the kubeconfig file")
     clusterLabel: str = Field(..., description="The label of the cluster")
     clusterDescription: str = Field(..., description="The description of the cluser")
+    caFile: str = Field(..., description="the cert auth for a cluster")
+    keyFile: str = Field(..., description="the key file for a user")
+    certFile: str = Field(..., description="the cert file for a user")
 
 
 class GetUsersKubeConfigsResponse(BaseModel):
