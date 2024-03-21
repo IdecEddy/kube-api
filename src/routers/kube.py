@@ -15,9 +15,9 @@ from models.kubeconf_db import KubeConfig
 from utils.auth import validate_token
 import yaml
 import httpx
-from ssl import SSLContext, PROTOCOL_TLS_CLIENT
-import tempfile
-import os
+from utils.ssl import create_ssl_context
+from utils.kubernetesApi import get_nodes, describe_node
+from models.auth_data import AuthRequest
 router = APIRouter(prefix="/api/v1/k8")
 logger = setup_logging()
 
@@ -121,32 +121,66 @@ def delete_conf_by_id(
 
 
 @router.get("/cluster-info")
-def get_cluster_info(db: Session = Depends(get_db)):
-    conf = db.query(KubeConfig).filter(KubeConfig.id == 1).first()
+def get_cluster_info(
+        db: Session = Depends(get_db),
+        authToken: httpx.Response = Depends(validate_token)):
 
-    if conf: 
-        ca_cert = str(conf.ca_file)
+    tokenUserId = authToken.json()["payload"]["user_id"]
+
+    try:
+        conf = db.query(KubeConfig).filter(KubeConfig.id == 1).one()
+    except NoResultFound:
+        raise HTTPException(
+            status_code=404, detail="could not find record."
+        )
+    except MultipleResultsFound:
+        raise HTTPException(
+            status_code=500, detail="The database has more then one record with the same id this is BAD.")
+
+    if tokenUserId == conf.user_id: 
+        ca_file = str(conf.ca_file)
         key_file = str(conf.key_file)
         cert_file = str(conf.cert_file)
 
-        with tempfile.NamedTemporaryFile() as cert_temp, \
-            tempfile.NamedTemporaryFile() as key_temp, \
-            tempfile.NamedTemporaryFile() as ca_temp:
+        ssl_context = create_ssl_context(cert_file, ca_file, key_file)
+        response = get_nodes(ssl_context, "https://192.168.50.84:8443") 
+        data = response.json()
+        result = [
+            {
+                "nodeName": item["metadata"]["name"], 
+                "Status": next(
+                    (condition["type"] for condition in item["status"]["conditions"] if condition["type"] == "Ready" and condition["status"] == "True"), 
+                    "Not Ready"
+                ) 
+            } 
+            for item in data["items"]
+        ]
+        listOfPods = []
+        for node in result:
+            res = describe_node(ssl_context, "https://192.168.50.84:8443", node['nodeName']).json()
+            for pod in res['items']:
+                podObj = {
+                    "name": None,
+                    "CPU": "0m",
+                    "memory": "0m",
+                    "NodeName": None,
+                }
+                podObj["name"] = pod.get("metadata", {}).get("name",{})
+                podObj["NodeName"] = pod.get("spec", {}).get("nodeName", None)
+                containers = pod.get("spec",{}).get("containers",{})
+                total_cpu = 0
+                total_memory = 0
+                for container in containers:
+                    requests =  container.get("resources",{}).get("requests",{})
+                    cpu = requests.get("cpu","0m")
+                    memory = requests.get("memory", "0Mi")
 
+                    total_memory += int(memory.rstrip("Mi"))
+                    total_cpu += int(cpu.rstrip("m"))
 
-            cert_temp.write(cert_file.encode())
-            key_temp.write(key_file.encode())
-            ca_temp.write(ca_cert.encode())
-            cert_temp.flush()
-            key_temp.flush()
-            ca_temp.flush()
-            ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
-            ssl_context.load_cert_chain(certfile=cert_temp.name, keyfile=key_temp.name)
-            ssl_context.load_verify_locations(cafile=ca_temp.name)
+                podObj["CPU"] = str(total_cpu) + "m"
+                podObj["memory"] = str(total_memory) + "Mi" 
+                listOfPods.append(podObj)
+        return listOfPods
 
-            with httpx.Client(verify=ssl_context) as client:
-                response = client.get("https://192.168.50.84:8443/api/v1/nodes")
-                return response.json()
-
-
-
+        

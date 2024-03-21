@@ -10,8 +10,12 @@ IS_PRODUCTION = True  # Set based on your environment
 
 
 async def validate_token(request: Request) -> httpx.Response:
-    body = await request.json()
+    try: 
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="AuthToken missing")
     authToken = body.get("authToken")
+    print(authToken)
     if not authToken:
         raise HTTPException(status_code=400, detail="AuthToken missing")
     body = {
