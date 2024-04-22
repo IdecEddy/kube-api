@@ -4,6 +4,7 @@ from typing import List
 from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from loggingconf import setup_logging
 from sqlalchemy.orm import Session
+from models.cluster_data import ClusterInfoRequest
 from utils.db import get_db
 from models.kubeconf_data import (
     CreateKubeConfigRequest,
@@ -16,8 +17,10 @@ from utils.auth import validate_token
 import yaml
 import httpx
 from utils.ssl import create_ssl_context
-from utils.kubernetesApi import get_nodes, describe_node
-from models.auth_data import AuthRequest
+from utils.kubernetesApi import get_nodes, get_node_metrics, get_pod_metrics, get_pods_on_node
+from utils.units import convert_cpu_units_to_nanocores, convert_storage_unit_to_bytes
+from models.dataclasses import KubeNode
+from utils.node import set_pod_metrics, set_resource_allocatable, set_resource_utilization
 router = APIRouter(prefix="/api/v1/k8")
 logger = setup_logging()
 
@@ -120,15 +123,17 @@ def delete_conf_by_id(
             )
 
 
-@router.get("/cluster-info")
-def get_cluster_info(
+@router.post("/v")
+def get_cluster_infoV2(
+        clusterInfoRequest: ClusterInfoRequest,
         db: Session = Depends(get_db),
         authToken: httpx.Response = Depends(validate_token)):
 
     tokenUserId = authToken.json()["payload"]["user_id"]
-
+    API_URL = "https://192.168.1.162:6443"
+    
     try:
-        conf = db.query(KubeConfig).filter(KubeConfig.id == 1).one()
+        conf = db.query(KubeConfig).filter(KubeConfig.id ==  clusterInfoRequest.configId).one()
     except NoResultFound:
         raise HTTPException(
             status_code=404, detail="could not find record."
@@ -136,51 +141,23 @@ def get_cluster_info(
     except MultipleResultsFound:
         raise HTTPException(
             status_code=500, detail="The database has more then one record with the same id this is BAD.")
-
+    
     if tokenUserId == conf.user_id: 
-        ca_file = str(conf.ca_file)
-        key_file = str(conf.key_file)
-        cert_file = str(conf.cert_file)
+        ssl_context = create_ssl_context(
+            caFile=str(conf.ca_file),
+            keyFile=str(conf.key_file),
+            certFile=str(conf.cert_file))
 
-        ssl_context = create_ssl_context(cert_file, ca_file, key_file)
-        response = get_nodes(ssl_context, "https://192.168.50.84:8443") 
-        data = response.json()
-        result = [
-            {
-                "nodeName": item["metadata"]["name"], 
-                "Status": next(
-                    (condition["type"] for condition in item["status"]["conditions"] if condition["type"] == "Ready" and condition["status"] == "True"), 
-                    "Not Ready"
-                ) 
-            } 
-            for item in data["items"]
-        ]
-        listOfPods = []
-        for node in result:
-            res = describe_node(ssl_context, "https://192.168.50.84:8443", node['nodeName']).json()
-            for pod in res['items']:
-                podObj = {
-                    "name": None,
-                    "CPU": "0m",
-                    "memory": "0m",
-                    "NodeName": None,
-                }
-                podObj["name"] = pod.get("metadata", {}).get("name",{})
-                podObj["NodeName"] = pod.get("spec", {}).get("nodeName", None)
-                containers = pod.get("spec",{}).get("containers",{})
-                total_cpu = 0
-                total_memory = 0
-                for container in containers:
-                    requests =  container.get("resources",{}).get("requests",{})
-                    cpu = requests.get("cpu","0m")
-                    memory = requests.get("memory", "0Mi")
-
-                    total_memory += int(memory.rstrip("Mi"))
-                    total_cpu += int(cpu.rstrip("m"))
-
-                podObj["CPU"] = str(total_cpu) + "m"
-                podObj["memory"] = str(total_memory) + "Mi" 
-                listOfPods.append(podObj)
-        return listOfPods
-
-        
+        response = get_nodes(ssl_context, API_URL).json()
+        list_of_nodes = []
+        for node in response["items"]:
+            kube_node = KubeNode()
+            kube_node.name = node.get("metadata", "").get("name", "")
+            set_resource_allocatable(node, kube_node)
+            node_metrics = get_node_metrics(ssl_context, API_URL, kube_node.name).json()
+            set_resource_utilization(node_metrics, kube_node)
+            pods = get_pods_on_node(ssl_context, API_URL, kube_node.name).json()
+            metrics = get_pod_metrics(ssl_context, API_URL).json()
+            kube_node.list_of_pods = set_pod_metrics(metrics, pods, kube_node)
+            list_of_nodes.append(kube_node)
+        return list_of_nodes

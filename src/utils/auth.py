@@ -15,7 +15,6 @@ async def validate_token(request: Request) -> httpx.Response:
     except Exception:
         raise HTTPException(status_code=400, detail="AuthToken missing")
     authToken = body.get("authToken")
-    print(authToken)
     if not authToken:
         raise HTTPException(status_code=400, detail="AuthToken missing")
     body = {
